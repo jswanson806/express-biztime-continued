@@ -1,4 +1,5 @@
 const express = require("express");
+const slugify = require("slugify");
 const app = require("../app");
 const router = new express.Router();
 const ExpressError = require('../expressError')
@@ -9,9 +10,8 @@ router.get('/', async (req, res, next) => {
     try {
         const results = await db.query(`SELECT * FROM companies`);
         if(results.rows.length === 0) {
-            throw new ExpressError(`Cannot find users in table 'companies`, 404);
+            throw new ExpressError(`Cannot find any companies`, 404);
         }
-        console.log("HERE I AM")
         return res.send({companies: results.rows})
     } catch(e) {
         next(e);
@@ -21,7 +21,19 @@ router.get('/', async (req, res, next) => {
 router.get('/:code', async (req, res, next) => {
     const { code } = req.params;
     try {
-        const cResults = await db.query(`SELECT * FROM companies WHERE code=$1`, [code]);
+
+        const cResults = await db.query(`
+        SELECT c.code, c.name, c.description, i.industry
+        FROM companies as c
+        LEFT JOIN company_industry AS ci
+        ON c.code = ci.company_code
+        LEFT JOIN industry AS i
+        ON ci.industry_code = i.ind_code
+        WHERE c.code = $1`, [code]);
+
+        console.log(cResults.body);
+
+
         const iResults = await db.query(`SELECT * FROM invoices WHERE comp_code=$1`, [code]);
 
         if(cResults.rows.length === 0) {
@@ -33,7 +45,7 @@ router.get('/:code', async (req, res, next) => {
 
         company.invoices = invoices.map(inv => inv.id);
 
-        return res.status(200).json({company: company});
+        return res.status(200).json(cResults.rows);
     } catch(e) {
         next(e);
     }
@@ -41,7 +53,8 @@ router.get('/:code', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
     try {
-        const { code, name, description } = req.body;
+        const { name, description } = req.body;
+        const code = slugify(`${name}`, { lower : true });
         const results = await db.query(`INSERT INTO companies (code, name, description) VALUES ($1, $2, $3) RETURNING code, name, description`, [code, name, description]);
         return res.status(201).json({ company: {code, name, description} });
     } catch(e) {
@@ -57,7 +70,7 @@ router.put('/:code', async (req, res, next) => {
         if(results.rows.length === 0) {
             throw new ExpressError(`Cannot find company with code ${code}`, 404);
         }
-        return res.status(200).json({ company: code, name, description });
+        return res.status(200).json({ company: {code, name, description} });
     } catch(e) {
         next(e);
     }

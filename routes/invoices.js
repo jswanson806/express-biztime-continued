@@ -11,7 +11,7 @@ router.get('/', async (req, res, next) => {
         if(results.rows.length === 0) {
             throw new ExpressError(`Cannot find users in table 'invoices`, 404);
         }
-        console.log("HERE I AM")
+
         return res.send({invoices: results.rows})
     } catch(e) {
         next(e);
@@ -43,11 +43,32 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
     try {
+
+        const today = new Date().toISOString().slice(0, 10);
         const { id } = req.params;
-        const { amt } = req.body;
-        const results = await db.query(`UPDATE invoices SET amt=$1 WHERE id=$2 RETURNING id, comp_code, amt, paid, add_date, paid_date`, [amt, id]);
+        const { amt, paid } = req.body;
+        let paidDate = null;
+
+        const iResult = await db.query(`SELECT paid FROM invoices WHERE id = $1`, [id]);
+
+        if(iResult.rows.length === 0) {
+            throw new ExpressError(`Cannot find invoice with id of ${id}`, 404);
+        }
+
+        const iResultPaidDate = iResult.rows[0].paid_date;
+
+        if (!iResultPaidDate && paid) {
+            paidDate = today;
+        } else if(!paid) {
+            paidDate = null;
+        } else {
+            paidDate = iResultPaidDate;
+        }
+
+        const results = await db.query(`UPDATE invoices SET amt=$1, paid=$2,paid_date=$3 WHERE id=$4 RETURNING id, comp_code, amt, paid, add_date,paid_date`, [amt, paid, paidDate, id]);
+        
         if(results.rows.length === 0) {
-            throw new ExpressError(`Cannot find company with id of ${id}`, 404);
+            throw new ExpressError(`Cannot find invoice with id of ${id}`, 404);
         }
         return res.status(200).json({ "invoice": results.rows[0] });
     } catch(e) {
